@@ -16,8 +16,18 @@ mod benchmarking;
 
 #[frame_support::pallet]
 pub mod pallet {
-	use frame_support::pallet_prelude::*;
+	use frame_support::{pallet_prelude::*, traits::tokens::Balance};
 	use frame_system::pallet_prelude::*;
+	use sp_std::vec::Vec;
+	
+	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
+#[scale_info(skip_type_params(T))]
+	pub struct Book {
+		pub title: Vec<u8>,
+		pub url: Vec<u8>,
+		pub price: Option<BalanceOf<T>>,
+		pub description: Vec<u8>
+	}
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
