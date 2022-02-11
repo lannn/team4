@@ -16,17 +16,19 @@ mod benchmarking;
 
 #[frame_support::pallet]
 pub mod pallet {
-	use frame_support::{pallet_prelude::*, traits::tokens::Balance};
+	use frame_support::pallet_prelude::*;
 	use frame_system::pallet_prelude::*;
 	use sp_std::vec::Vec;
+	use log;
 	
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
-#[scale_info(skip_type_params(T))]
+	#[scale_info(skip_type_params(T))]
 	pub struct Book {
 		pub title: Vec<u8>,
 		pub url: Vec<u8>,
-		pub price: Option<BalanceOf<T>>,
-		pub description: Vec<u8>
+		pub price: u64,
+		pub description: Vec<u8>,
+		pub owner: AccountOf<T>
 	}
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
@@ -43,10 +45,10 @@ pub mod pallet {
 	// The pallet's runtime storage items.
 	// https://docs.substrate.io/v3/runtime/storage
 	#[pallet::storage]
-	#[pallet::getter(fn something)]
 	// Learn more about declaring storage items:
 	// https://docs.substrate.io/v3/runtime/storage#declaring-storage-items
-	pub type Something<T> = StorageValue<_, u32>;
+	pub type Books<T: Config> = StorageValue<_, Twox64Concat, T::Hash, Book>;
+	pub type BooksOwned<T: Config> = StorageValue<_, Twox64Concat, T::AccountId, T::Hash>;
 
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/v3/runtime/events-and-errors
@@ -74,20 +76,35 @@ pub mod pallet {
 	impl<T: Config> Pallet<T> {
 		/// An example dispatchable that takes a singles value as a parameter, writes the value to
 		/// storage and emits an event. This function must be dispatched by a signed extrinsic.
-		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
-		pub fn do_something(origin: OriginFor<T>, something: u32) -> DispatchResult {
+		#[pallet::weight(100)]
+		pub fn create_book(origin: OriginFor<T>) -> DispatchResult {
 			// Check that the extrinsic was signed and get the signer.
 			// This function will return an error if the extrinsic is not signed.
 			// https://docs.substrate.io/v3/runtime/origins
-			let who = ensure_signed(origin)?;
+			let sender = ensure_signed(origin)?;
 
-			// Update storage.
-			<Something<T>>::put(something);
+			let book_id = Self::mint(&sender);
+			
+			log::info("A book is created with ID: {:?}", book_id);
 
-			// Emit an event.
-			Self::deposit_event(Event::SomethingStored(something, who));
-			// Return a successful DispatchResultWithPostInfo
 			Ok(())
+		}
+
+		pub fn mint(owner: &T::AccountId) -> Result<T::Hash, Error<T>> {
+			let book = Book {
+				title: "book title",
+				url: "book url",
+				price: None,
+				description: "book description",
+				owner: owner.clone(),
+			};
+
+			let book_id = T::Hashing::hash_of(&book);
+
+			<BooksOwned<T>>::insert(&owner, book_id);
+			<Books<T>>::insert(book_id, book);
+
+			Ok(book_id)
 		}
 
 		/// An example dispatchable that may throw a custom error.
