@@ -18,6 +18,19 @@ mod benchmarking;
 pub mod pallet {
 	use frame_support::pallet_prelude::*;
 	use frame_system::pallet_prelude::*;
+	use sp_std::vec::Vec;
+
+	type AccountOf<T> = <T as frame_system::Config>::AccountId;
+
+	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
+	#[scale_info(skip_type_params(T))]
+	pub struct Book<T: Config> {
+		pub title: Vec<u8>,
+		pub url: Vec<u8>,
+		pub price: u64,
+		pub description: Vec<u8>,
+		pub owner: AccountOf<T>,
+	}
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
@@ -30,13 +43,13 @@ pub mod pallet {
 	#[pallet::generate_store(pub(super) trait Store)]
 	pub struct Pallet<T>(_);
 
-	// The pallet's runtime storage items.
-	// https://docs.substrate.io/v3/runtime/storage
 	#[pallet::storage]
 	#[pallet::getter(fn something)]
-	// Learn more about declaring storage items:
-	// https://docs.substrate.io/v3/runtime/storage#declaring-storage-items
 	pub type Something<T> = StorageValue<_, u32>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn books)]
+	pub(super) type Books<T: Config> = StorageMap<_, Twox64Concat, T::Hash, Book<T>>;
 
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/v3/runtime/events-and-errors
