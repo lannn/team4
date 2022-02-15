@@ -21,6 +21,7 @@ pub mod pallet {
 	use sp_std::vec::Vec;
 	use frame_support::{
 		sp_runtime::traits::Hash,
+		transactional,
 	};
 
 	type AccountOf<T> = <T as frame_system::Config>::AccountId;
@@ -56,7 +57,7 @@ pub mod pallet {
 		_,
 		Twox64Concat,
 		T::AccountId,
-		T::Hash,
+		Vec<T::Hash>,
 		ValueQuery,
 	>;
 
@@ -66,15 +67,13 @@ pub mod pallet {
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
 		Created(T::AccountId, T::Hash),
+		Transferred(T::AccountId, T::AccountId, T::Hash),
 	}
 
 	// Errors inform users that something went wrong.
 	#[pallet::error]
 	pub enum Error<T> {
-		/// Error names should be descriptive.
-		NoneValue,
-		/// Errors should have helpful documentation associated with them.
-		StorageOverflow,
+		BookNotExist,
 	}
 
 	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -83,10 +82,24 @@ pub mod pallet {
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
 		#[pallet::weight(100)]
-		pub fn create_book(origin: OriginFor<T>) -> DispatchResult {
+		pub fn create_book(
+			origin: OriginFor<T>, 
+			title: Vec<u8>,
+			url: Vec<u8>,
+			description: Vec<u8>,
+			price: u64,
+		) -> DispatchResult {
 			let sender = ensure_signed(origin)?;
 
-			let book_id = Self::mint(&sender)?;
+			let book = Book::<T> {
+				title: title,
+				url: url,
+				description: description,
+				price: price,
+				owner: sender.clone(),
+			};
+
+			let book_id = Self::mint(&sender, book)?;
 
 			log::info!("A book is created with ID: {:?}.", book_id);
 
@@ -94,24 +107,54 @@ pub mod pallet {
 
 			Ok(())
 		}
+
+		#[pallet::weight(100)]
+		pub fn transfer(origin: OriginFor<T>, to: T::AccountId, book_id: T::Hash) -> DispatchResult {
+			let from = ensure_signed(origin)?;
+
+			Self::transfer_book_to(&book_id, &to)?;
+
+			Self::deposit_event(Event::Transferred(from, to, book_id));
+
+			Ok(())
+		}
 	}
 
 	impl<T: Config> Pallet<T> {
-		pub fn mint(owner: &T::AccountId) -> Result<T::Hash, Error<T>> {
-			let book = Book::<T> {
-				title: "title".as_bytes().to_vec(),
-				url: "url".as_bytes().to_vec(),
-				description: "description".as_bytes().to_vec(),
-				price: 0,
-				owner: owner.clone(),
-			};
-
+		pub fn mint(owner: &T::AccountId, book: Book<T>) -> Result<T::Hash, Error<T>> {
 			let book_id = T::Hashing::hash_of(&book);
 
 			<Books<T>>::insert(book_id, book);
-			<BooksOwned<T>>::insert(&owner, book_id);
+			<BooksOwned<T>>::mutate(&owner, |book_vec| {
+				book_vec.push(book_id)
+			});
 
 			Ok(book_id)
+		}
+
+		#[transactional]
+		pub fn transfer_book_to(book_id: &T::Hash, to: &T::AccountId) -> Result<(), Error<T>> {
+			let mut book = Self::books(&book_id).ok_or(<Error<T>>::BookNotExist)?;
+
+			let prev_owner = book.owner.clone();
+
+			// Remove book_id from BooksOwned of previous book owner
+			<BooksOwned<T>>::try_mutate(&prev_owner, |book_vec| {
+				if let Some(index) = book_vec.iter().position(|&id| id == *book_id) {
+					book_vec.swap_remove(index);
+					return Ok(());
+				}
+				Err(())
+			}).map_err(|_| <Error<T>>::BookNotExist)?;
+
+			book.owner = to.clone();
+
+			<Books<T>>::insert(book_id, book);
+			<BooksOwned<T>>::mutate(to, |book_vec| {
+				book_vec.push(*book_id)
+			});
+
+			Ok(())
 		}
 	}
 }
