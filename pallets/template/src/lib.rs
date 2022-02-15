@@ -68,6 +68,7 @@ pub mod pallet {
 	pub enum Event<T: Config> {
 		Created(T::AccountId, T::Hash),
 		Transferred(T::AccountId, T::AccountId, T::Hash),
+		Bought(T::AccountId, T::AccountId, T::Hash),
 	}
 
 	// Errors inform users that something went wrong.
@@ -115,6 +116,19 @@ pub mod pallet {
 			Self::transfer_book_to(&book_id, &to)?;
 
 			Self::deposit_event(Event::Transferred(from, to, book_id));
+
+			Ok(())
+		}
+
+		#[pallet::weight(100)]
+		pub fn buy_book(origin: OriginFor<T>, book_id: T::Hash) -> DispatchResult {
+			let buyer = ensure_signed(origin)?;
+			let book = <Books<T>>::get(book_id).unwrap();
+			let seller = book.owner.clone();
+
+			Self::transfer_book_to(&book_id, &buyer)?;
+
+			Self::deposit_event(Event::Bought(buyer, seller, book_id));
 
 			Ok(())
 		}
