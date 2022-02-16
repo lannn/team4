@@ -22,16 +22,18 @@ pub mod pallet {
 	use frame_support::{
 		sp_runtime::traits::Hash,
 		transactional,
+		traits::{ Currency, tokens::ExistenceRequirement }
 	};
 
 	type AccountOf<T> = <T as frame_system::Config>::AccountId;
+	type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
 	#[scale_info(skip_type_params(T))]
 	pub struct Book<T: Config> {
 		pub title: Vec<u8>,
 		pub url: Vec<u8>,
-		pub price: u64,
+		pub price: Option<BalanceOf<T>>,
 		pub description: Vec<u8>,
 		pub owner: AccountOf<T>,
 	}
@@ -41,6 +43,8 @@ pub mod pallet {
 	pub trait Config: frame_system::Config {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+
+		type Currency: Currency<Self::AccountId>;
 	}
 
 	#[pallet::pallet]
@@ -68,12 +72,15 @@ pub mod pallet {
 	pub enum Event<T: Config> {
 		Created(T::AccountId, T::Hash),
 		Transferred(T::AccountId, T::AccountId, T::Hash),
+		Bought(T::AccountId, T::AccountId, T::Hash, BalanceOf<T>),
 	}
 
 	// Errors inform users that something went wrong.
 	#[pallet::error]
 	pub enum Error<T> {
 		BookNotExist,
+		NotEnoughBalance,
+		BookBidPriceTooLow,
 	}
 
 	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -87,7 +94,7 @@ pub mod pallet {
 			title: Vec<u8>,
 			url: Vec<u8>,
 			description: Vec<u8>,
-			price: u64,
+			price: BalanceOf<T>,
 		) -> DispatchResult {
 			let sender = ensure_signed(origin)?;
 
@@ -95,7 +102,7 @@ pub mod pallet {
 				title: title,
 				url: url,
 				description: description,
-				price: price,
+				price: Some(price),
 				owner: sender.clone(),
 			};
 
@@ -115,6 +122,28 @@ pub mod pallet {
 			Self::transfer_book_to(&book_id, &to)?;
 
 			Self::deposit_event(Event::Transferred(from, to, book_id));
+
+			Ok(())
+		}
+
+		#[transactional]
+		#[pallet::weight(100)]
+		pub fn buy_book(origin: OriginFor<T>, book_id: T::Hash, bid_price: BalanceOf<T>) -> DispatchResult {
+			let buyer = ensure_signed(origin)?;
+			let book = <Books<T>>::get(book_id).unwrap();
+			let seller = book.owner.clone();
+
+			if let Some(ask_price) = book.price {
+				ensure!(ask_price <= bid_price, <Error<T>>::BookBidPriceTooLow)
+			}
+
+			ensure!(T::Currency::free_balance(&buyer) >= bid_price, <Error<T>>::NotEnoughBalance);
+
+			T::Currency::transfer(&buyer, &seller, bid_price, ExistenceRequirement::KeepAlive)?;
+
+			Self::transfer_book_to(&book_id, &buyer)?;
+
+			Self::deposit_event(Event::Bought(buyer, seller, book_id, bid_price));
 
 			Ok(())
 		}
