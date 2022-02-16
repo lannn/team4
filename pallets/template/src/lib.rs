@@ -80,6 +80,7 @@ pub mod pallet {
 	#[pallet::error]
 	pub enum Error<T> {
 		BookNotExist,
+		NotBookOwner,
 		NotEnoughBalance,
 		BookBidPriceTooLow,
 	}
@@ -120,6 +121,8 @@ pub mod pallet {
 		pub fn set_price(origin: OriginFor<T>, book_id: T::Hash, new_price: Option<BalanceOf<T>>) -> DispatchResult {
 			let sender = ensure_signed(origin)?;
 
+			ensure!(Self::is_book_owner(&book_id, &sender)?, <Error<T>>::NotBookOwner);
+
 			let mut book = Self::books(&book_id).ok_or(<Error<T>>::BookNotExist)?;
 
 			book.price = new_price.clone();
@@ -134,6 +137,8 @@ pub mod pallet {
 		#[pallet::weight(100)]
 		pub fn transfer(origin: OriginFor<T>, to: T::AccountId, book_id: T::Hash) -> DispatchResult {
 			let from = ensure_signed(origin)?;
+
+			ensure!(Self::is_book_owner(&book_id, &from)?, <Error<T>>::NotBookOwner);
 
 			Self::transfer_book_to(&book_id, &to)?;
 
@@ -175,6 +180,13 @@ pub mod pallet {
 			});
 
 			Ok(book_id)
+		}
+
+		pub fn is_book_owner(book_id: &T::Hash, account: &T::AccountId) -> Result<bool, Error<T>> {
+			match Self::books(book_id) {
+				Some(book) => Ok(book.owner == *account),
+				None => Err(<Error<T>>::BookNotExist)
+			}
 		}
 
 		#[transactional]
