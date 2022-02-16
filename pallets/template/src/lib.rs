@@ -73,6 +73,7 @@ pub mod pallet {
 		Created(T::AccountId, T::Hash),
 		Transferred(T::AccountId, T::AccountId, T::Hash),
 		Bought(T::AccountId, T::AccountId, T::Hash, BalanceOf<T>),
+		PriceSet(T::AccountId, T::Hash, Option<BalanceOf<T>>),
 	}
 
 	// Errors inform users that something went wrong.
@@ -111,6 +112,21 @@ pub mod pallet {
 			log::info!("A book is created with ID: {:?}.", book_id);
 
 			Self::deposit_event(Event::Created(sender, book_id));
+
+			Ok(())
+		}
+
+		#[pallet::weight(100)]
+		pub fn set_price(origin: OriginFor<T>, book_id: T::Hash, new_price: Option<BalanceOf<T>>) -> DispatchResult {
+			let sender = ensure_signed(origin)?;
+
+			let mut book = Self::books(&book_id).ok_or(<Error<T>>::BookNotExist)?;
+
+			book.price = new_price.clone();
+
+			<Books<T>>::insert(&book_id, book);
+
+			Self::deposit_event(Event::PriceSet(sender, book_id, new_price));
 
 			Ok(())
 		}
