@@ -81,6 +81,7 @@ pub mod pallet {
 	pub enum Error<T> {
 		BookNotExist,
 		NotBookOwner,
+		BuyerIsBookOwner,
 		NotEnoughBalance,
 		BookBidPriceTooLow,
 	}
@@ -153,6 +154,8 @@ pub mod pallet {
 			let buyer = ensure_signed(origin)?;
 			let book = <Books<T>>::get(book_id).unwrap();
 			let seller = book.owner.clone();
+
+			ensure!(book.owner != buyer, <Error<T>>::BuyerIsBookOwner);
 
 			if let Some(ask_price) = book.price {
 				ensure!(ask_price <= bid_price, <Error<T>>::BookBidPriceTooLow)
